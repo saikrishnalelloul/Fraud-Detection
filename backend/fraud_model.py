@@ -9,6 +9,7 @@ Outputs:
  - prints a small sample of transactions with predicted label
  - saves predictions.csv in the same folder
 """
+import pickle
 import random
 import sqlite3
 from datetime import datetime, timedelta
@@ -231,8 +232,18 @@ def main():
     print("Training IsolationForest...")
     # The contamination param should reflect how many anomalies you expect.
     # If you set contamination too high, many normal txns will be misclassified as fraud.
-    model = train_isolation_forest(X, contamination=0.02)
 
+    model = train_isolation_forest(X, contamination=0.02)
+    artifacts = {
+        "model": model,
+        "le_loc": encoders[0],
+        "le_dev": encoders[1],
+        "scaler": encoders[2]
+    }
+    with open("isolation_forest_artifacts.pkl", "wb") as f:
+        pickle.dump(artifacts, f)
+    print("Saved model + encoders + scaler to isolation_forest_artifacts.pkl")
+    
     print("Predicting...")
     results = predict_and_save(model, X, df_prepared, output_csv="predictions.csv", save_sqlite=False)
 
