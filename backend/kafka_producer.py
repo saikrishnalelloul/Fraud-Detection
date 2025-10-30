@@ -5,9 +5,11 @@ from kafka import KafkaProducer
 from uuid import uuid4
 import random
 from datetime import datetime
+import os
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 
 producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
+    bootstrap_servers=[KAFKA_BROKER],
     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
     linger_ms=5
 )

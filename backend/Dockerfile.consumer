@@ -1,0 +1,14 @@
+# ---------- Dockerfile.consumer ----------
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies first (benefit of layer caching)
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy entire backend (includes init_db.py, consumer scripts, model artifact)
+COPY . /app
+
+# Default command
+CMD ["python", "kafka_consumer_worker.py"]

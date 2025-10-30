@@ -1,0 +1,17 @@
+# ---------- Dockerfile.producer ----------
+FROM python:3.10-slim
+
+# Set working directory inside container
+WORKDIR /app
+
+# Copy only what we need
+COPY requirements.txt .
+
+# Install dependencies (no cache to keep image small)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy producer code
+COPY kafka_producer.py .
+
+# Command to run when container starts
+CMD ["python", "kafka_producer.py"]

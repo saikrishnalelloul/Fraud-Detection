@@ -1,0 +1,11 @@
+flask
+flask-cors
+kafka-python
+scikit-learn
+pandas
+numpy
+sqlalchemy
+faker
+python-dotenv
+joblib
+requests

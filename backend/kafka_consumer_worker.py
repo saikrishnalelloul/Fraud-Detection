@@ -8,6 +8,8 @@ import pandas as pd
 from datetime import datetime, timezone
 import os
 
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
@@ -29,7 +31,7 @@ engine = create_engine(DB_URL, echo=False)
 # ---------- Kafka consumer ----------
 consumer = KafkaConsumer(
     'transactions',
-    bootstrap_servers=['localhost:9092'],
+    bootstrap_servers=[KAFKA_BROKER],
     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
     auto_offset_reset='earliest',
     enable_auto_commit=True,
