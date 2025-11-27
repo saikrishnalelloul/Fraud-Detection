@@ -98,5 +98,9 @@ def get_transactions():
 
     return jsonify(transactions)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# if __name__ == '__main__':
+#     app.run(debug=True)
+if __name__ == "__main__":
+    # bind to 0.0.0.0 so the container exposes port 5000 to host
+    app.run(host="0.0.0.0", port=5000, debug=False)
+

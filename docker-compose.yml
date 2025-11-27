@@ -1,5 +1,4 @@
-version: "3.8"
-
+# docker-compose.yml (paste exactly)
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -8,17 +7,12 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
     ports:
-      - "9092:9092"
+      - "29092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -28,11 +22,6 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
-    healthcheck:
-      test: ["CMD", "bash", "-lc", "echo > /dev/tcp/localhost/9092"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
 
   producer:
     build:
@@ -52,6 +41,21 @@ services:
       - kafka
     environment:
       - KAFKA_BROKER=kafka:9092
+      - DATABASE_URL=${DATABASE_URL}
     restart: always
-    # ensure DB is created before consumer starts
     command: bash -c "python init_db.py && exec python kafka_consumer_worker.py"
+
+  flask:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.flask
+    depends_on:
+      - consumer
+      - kafka
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - KAFKA_BROKER=kafka:9092
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    command: ["python", "-u", "app.py"]

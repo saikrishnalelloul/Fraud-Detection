@@ -1,0 +1,19 @@
+# backend/Dockerfile.flask
+FROM python:3.10-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
+# install minimal system deps (if needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# copy app code
+COPY . /app
+RUN chmod -R a+r /app
+
+# run Flask (make sure your app entry is app.py)
+CMD ["python", "-u", "app.py"]
