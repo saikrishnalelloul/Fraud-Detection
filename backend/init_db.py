@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     timestamp TEXT,
     prediction TEXT,
     is_fraud INTEGER,
-    risk_score REAL
+    risk_score REAL,
+    fraud_reason TEXT
 );
 """
 

@@ -61,11 +61,17 @@ function App() {
   const [filters, setFilters] = useState({
     userId: "",
     amount: "",
+    location: "",
   });
   const [appliedFilters, setAppliedFilters] = useState({
     userId: "",
     amount: "",
+    location: "",
   });
+  const [validationResult, setValidationResult] = useState(null);
+  const [validationError, setValidationError] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const fetchTransactions = async () => {
     try {
@@ -101,15 +107,62 @@ function App() {
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleValidate = (event) => {
+  const handleValidate = async (event) => {
     event.preventDefault();
-    setAppliedFilters(filters);
+    setValidationError(null);
+    setValidationResult(null);
+
+    const trimmedUserId = filters.userId.trim();
+    if (!trimmedUserId) {
+      setValidationError("Please enter a user ID.");
+      return;
+    }
+
+    const amountValue = parseFloat(filters.amount);
+    if (!Number.isFinite(amountValue)) {
+      setValidationError("Please enter a numeric amount.");
+      return;
+    }
+
+    setValidating(true);
+    try {
+      const payload = {
+        user_id: trimmedUserId,
+        amount: amountValue,
+      };
+      const locationValue = filters.location.trim();
+      if (locationValue) {
+        payload.location = locationValue;
+      }
+
+      const res = await axios.post(
+        "http://127.0.0.1:5000/validate-transaction",
+        payload
+      );
+      setValidationResult(res.data);
+      setAppliedFilters({
+        userId: filters.userId,
+        amount: filters.amount,
+        location: filters.location,
+      });
+    } catch (err) {
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        "Unable to validate transaction.";
+      setValidationError(message);
+    } finally {
+      setValidating(false);
+    }
   };
 
   const handleReset = () => {
-    const reset = { userId: "", amount: "" };
+    const reset = { userId: "", amount: "", location: "" };
     setFilters(reset);
     setAppliedFilters(reset);
+    setValidationResult(null);
+    setValidationError(null);
+    setShowAdvanced(false);
   };
 
   const filteredTransactions = useMemo(() => {
@@ -183,6 +236,11 @@ function App() {
     [total]
   );
 
+  const validationStatus = validationResult?.status === "fraud" ? "fraud" : "valid";
+  const validationFlags = validationResult?.flag_details || [];
+  const validationHistory = validationResult?.history || {};
+  const validationEvaluated = validationResult?.evaluated || {};
+
   return (
     <div className="container">
       <div className="header">
@@ -235,16 +293,76 @@ function App() {
                     onChange={handleInputChange}
                   />
                 </div>
+                {showAdvanced && (
+                  <div className="input-group">
+                    <label htmlFor="location">Location (optional)</label>
+                    <input
+                      id="location"
+                      name="location"
+                      placeholder="Enter location"
+                      value={filters.location}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                )}
               </div>
+              <button
+                type="button"
+                className="advanced-toggle"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+              >
+                {showAdvanced ? "Hide advanced fields" : "Add location (optional)"}
+              </button>
               <div className="actions">
-                <button type="submit" className="primary-btn">
-                  Validate
+                <button type="submit" className="primary-btn" disabled={validating}>
+                  {validating ? "Checking..." : "Validate"}
                 </button>
                 <button type="button" className="secondary-btn" onClick={handleReset}>
                   Reset
                 </button>
               </div>
             </form>
+            {validationError && (
+              <div className="validation-banner error">
+                <span>{validationError}</span>
+              </div>
+            )}
+            {validationResult && (
+              <div className={`validation-banner ${validationStatus}`}>
+                <div className="validation-header">
+                  <span className={`status-pill ${validationStatus}`}>
+                    {validationStatus === "fraud" ? "Fraud" : "Valid"}
+                  </span>
+                  <span className="validation-context">
+                    Amount {formatAmount(validationEvaluated.amount)}
+                    {validationHistory.average_amount != null
+                      ? ` · Avg ${formatAmount(validationHistory.average_amount)}`
+                      : ""}
+                  </span>
+                </div>
+                {validationHistory.recent_count ? (
+                  <div className="validation-meta">
+                    Last txn {formatTime(validationHistory.last_time)}
+                    {validationHistory.last_location
+                      ? ` · ${validationHistory.last_location}`
+                      : ""}
+                  </div>
+                ) : (
+                  <div className="validation-meta">No prior history for this user.</div>
+                )}
+                {validationFlags.length > 0 ? (
+                  <ul className="validation-flags">
+                    {validationFlags.map((flag) => (
+                      <li key={flag.code}>
+                        <strong>{flag.code}</strong>: {flag.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="validation-safe">No fraud rules fired for this scenario.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -302,6 +420,7 @@ function App() {
                 }
                 const time = tx.time ?? tx.timestamp ?? "-";
                 const status = statusFrom(tx);
+                const reason = tx.fraud_reason ?? tx.reason ?? tx.flags;
                 const statusClass = status === "Fraud" ? "status-pill fraud" : "status-pill valid";
 
                 return (
@@ -312,7 +431,9 @@ function App() {
                     <td>{formatAmount(amount)}</td>
                     <td>{formatTime(time)}</td>
                     <td>
-                      <span className={statusClass}>{status}</span>
+                      <span className={statusClass} title={reason ? `Reason: ${reason}` : undefined}>
+                        {status}
+                      </span>
                     </td>
                   </tr>
                 );

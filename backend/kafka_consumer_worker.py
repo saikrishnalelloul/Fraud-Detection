@@ -10,7 +10,8 @@ import os
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 
 import warnings
-from database import insert_transaction
+from database import insert_transaction, fetch_recent_transactions_by_user
+from fraud_rules import evaluate_rule_flags
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 # ---------- Load artifacts ----------
@@ -67,6 +68,10 @@ print("Consumer ready — waiting for messages...")
 for msg in consumer:
     tx = msg.value
     try:
+        user_id = tx.get("user_id")
+        recent_for_user = fetch_recent_transactions_by_user(user_id, limit=5)
+        rule_flags = evaluate_rule_flags(tx, recent_for_user)
+
         X = featurize_single_tx(tx, le_loc, le_dev, scaler)
         pred = model.predict(X)[0]            # -1 (fraud) or +1 (normal)
         score = model.decision_function(X)[0] # higher = more normal
@@ -82,7 +87,16 @@ for msg in consumer:
             threshold = np.percentile(score, 5)
 
         # Mark fraud if score is below that threshold
-        is_fraud = 1 if score < threshold else 0
+        model_flag = score < threshold or pred == -1
+        is_fraud = 1 if (model_flag or rule_flags) else 0
+
+        fraud_reason = None
+        if rule_flags and model_flag:
+            fraud_reason = ", ".join(rule_flags + ["model_anomaly"])
+        elif rule_flags:
+            fraud_reason = ", ".join(rule_flags)
+        elif model_flag:
+            fraud_reason = "model_anomaly"
 
         # pred = model.predict(X)[0]            # 1 or -1
         # score = model.decision_function(X)[0] # higher -> more normal
@@ -101,11 +115,21 @@ for msg in consumer:
             "timestamp": tx.get("time", datetime.now(timezone.utc).isoformat()),
             "is_fraud": is_fraud,
             "risk_score": risk_score,
+            "fraud_reason": fraud_reason,
         }
 
         insert_transaction(tx_record, "fraud" if is_fraud else "normal")
 
-        print("Processed", tx_record["transaction_id"], "fraud?", is_fraud, "risk", risk_score)
+        print(
+            "Processed",
+            tx_record["transaction_id"],
+            "fraud?",
+            is_fraud,
+            "risk",
+            risk_score,
+            "flags",
+            fraud_reason,
+        )
     except Exception as e:
         print("Error processing message:", e)
         # optional: log the message to a dead-letter table or file

@@ -23,7 +23,8 @@ def get_connection():
             timestamp TEXT,
             prediction TEXT,
             is_fraud INTEGER,
-            risk_score REAL
+            risk_score REAL,
+            fraud_reason TEXT
         )
         """
     )
@@ -44,6 +45,7 @@ def insert_transaction(transaction, prediction=None):
         "prediction": prediction,
         "is_fraud": transaction.get("is_fraud"),
         "risk_score": transaction.get("risk_score"),
+        "fraud_reason": transaction.get("fraud_reason"),
     }
     cursor.execute(
         """
@@ -57,7 +59,8 @@ def insert_transaction(transaction, prediction=None):
             timestamp,
             prediction,
             is_fraud,
-            risk_score
+            risk_score,
+            fraud_reason
         )
         VALUES (
             :transaction_id,
@@ -69,7 +72,8 @@ def insert_transaction(transaction, prediction=None):
             :timestamp,
             :prediction,
             :is_fraud,
-            :risk_score
+            :risk_score,
+            :fraud_reason
         )
         ON CONFLICT(transaction_id) DO UPDATE SET
             user_id=excluded.user_id,
@@ -80,9 +84,31 @@ def insert_transaction(transaction, prediction=None):
             timestamp=excluded.timestamp,
             prediction=excluded.prediction,
             is_fraud=excluded.is_fraud,
-            risk_score=excluded.risk_score
+            risk_score=excluded.risk_score,
+            fraud_reason=excluded.fraud_reason
         """,
         payload,
     )
     conn.commit()
     conn.close()
+
+
+def fetch_recent_transactions_by_user(user_id, limit=5):
+    if user_id is None:
+        return []
+    conn, cursor = get_connection()
+    try:
+        cursor.execute(
+            """
+            SELECT rowid AS sqlite_rowid, *
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY datetime(COALESCE(timestamp, time)) DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()

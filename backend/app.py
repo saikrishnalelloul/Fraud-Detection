@@ -3,8 +3,14 @@ import joblib
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import IsolationForest
-from database import insert_transaction, get_connection
+from database import insert_transaction, get_connection, fetch_recent_transactions_by_user
 from flask_cors import CORS
+from fraud_rules import (
+    evaluate_rule_flags,
+    parse_float,
+    parse_time,
+    RULE_DESCRIPTIONS,
+)
 
 app = Flask(__name__)
 CORS(app)  # 👈 allow React frontend access
@@ -150,6 +156,7 @@ def get_transactions():
             "risk_score": record.get("risk_score"),
             "location": record.get("location"),
             "device": record.get("device"),
+            "fraud_reason": record.get("fraud_reason"),
         })
 
     response = {
@@ -157,6 +164,96 @@ def get_transactions():
         "meta": {
             "total": total_count,
             "frauds": fraud_count,
+        },
+    }
+
+    return jsonify(response)
+
+
+@app.route('/validate-transaction', methods=['POST'])
+def validate_transaction():
+    payload = request.get_json(force=True) or {}
+
+    user_id_raw = payload.get('user_id') or payload.get('userId')
+    amount_raw = payload.get('amount')
+    location = payload.get('location') or payload.get('location_hint')
+    device = payload.get('device')
+    time_hint = payload.get('time') or payload.get('timestamp')
+
+    if user_id_raw is None or str(user_id_raw).strip() == "":
+        return jsonify({"error": "user_id is required"}), 400
+
+    user_id_str = str(user_id_raw).strip()
+    if user_id_str == "":
+        return jsonify({"error": "user_id is required"}), 400
+
+    try:
+        user_id = int(user_id_str)
+    except ValueError:
+        user_id = user_id_str
+
+    try:
+        amount = float(amount_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "amount must be a numeric value"}), 400
+
+    recent = fetch_recent_transactions_by_user(user_id, limit=10)
+
+    candidate_time = parse_time(time_hint)
+    if candidate_time is None:
+        candidate_time = pd.Timestamp.utcnow()
+    candidate_iso = candidate_time.isoformat()
+
+    candidate_location = location
+    if not candidate_location and recent:
+        candidate_location = recent[0].get('location')
+
+    candidate_tx = {
+        "user_id": user_id,
+        "amount": amount,
+        "location": candidate_location,
+        "device": device,
+        "time": candidate_iso,
+        "timestamp": candidate_iso,
+    }
+
+    rule_flags = evaluate_rule_flags(candidate_tx, recent)
+    status = "fraud" if rule_flags else "valid"
+
+    amounts = [parse_float(r.get('amount')) for r in recent]
+    amounts = [a for a in amounts if a is not None]
+    average_amount = sum(amounts) / len(amounts) if amounts else None
+
+    last_tx = recent[0] if recent else None
+    last_amount = None
+    last_time = None
+    last_location = None
+    if last_tx:
+        last_amount = parse_float(last_tx.get('amount'))
+        last_time = last_tx.get('time') or last_tx.get('timestamp')
+        last_location = last_tx.get('location')
+
+    response = {
+        "status": status,
+        "flags": rule_flags,
+        "flag_details": [
+            {
+                "code": flag,
+                "message": RULE_DESCRIPTIONS.get(flag, flag),
+            }
+            for flag in rule_flags
+        ],
+        "history": {
+            "recent_count": len(recent),
+            "average_amount": average_amount,
+            "last_amount": last_amount,
+            "last_time": last_time,
+            "last_location": last_location,
+        },
+        "evaluated": {
+            "amount": amount,
+            "location": candidate_location,
+            "time": candidate_iso,
         },
     }
 

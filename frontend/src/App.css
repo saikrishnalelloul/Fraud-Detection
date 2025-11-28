@@ -189,6 +189,21 @@ body {
   margin-top: 18px;
 }
 
+.advanced-toggle {
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #58a6ff;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.advanced-toggle:hover {
+  text-decoration: underline;
+}
+
 .primary-btn,
 .secondary-btn {
   flex: 1 1 150px;
@@ -216,6 +231,14 @@ body {
 .secondary-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(88, 166, 255, 0.18);
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .chart-card {
@@ -313,6 +336,63 @@ tbody tr:hover {
 .status-pill.valid {
   background-color: rgba(40, 167, 69, 0.15);
   color: #28a745;
+}
+
+.validation-banner {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  background-color: rgba(13, 17, 23, 0.92);
+  font-size: 14px;
+}
+
+.validation-banner.valid {
+  border-color: rgba(40, 167, 69, 0.45);
+}
+
+.validation-banner.fraud {
+  border-color: rgba(255, 77, 79, 0.55);
+}
+
+.validation-banner.error {
+  border-color: rgba(255, 148, 77, 0.55);
+  color: #ffb86c;
+}
+
+.validation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.validation-context {
+  color: #8b949e;
+  font-size: 13px;
+}
+
+.validation-meta {
+  color: #8b949e;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.validation-flags {
+  margin: 0;
+  padding-left: 18px;
+  color: #e6edf3;
+}
+
+.validation-flags li {
+  margin-bottom: 4px;
+}
+
+.validation-safe {
+  margin: 0;
+  color: #58a6ff;
+  font-size: 13px;
 }
 
 .empty-state {
