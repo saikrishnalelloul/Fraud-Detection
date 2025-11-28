@@ -11,6 +11,21 @@ import "./App.css";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+const StatCard = ({ label, value, tone, badge }) => {
+  const symbol = badge || (label ? label.charAt(0).toUpperCase() : "?");
+  return (
+    <div className={`stat-card tone-${tone}`}>
+      <div className="stat-card-top">
+        <span className="stat-icon" aria-hidden="true">
+          {symbol}
+        </span>
+        <span className="stat-label">{label}</span>
+      </div>
+      <div className="stat-value">{value}</div>
+    </div>
+  );
+};
+
 // ===== Helpers =====
 const formatAmount = (a) => {
   if (a === null || a === undefined || a === "") return "-";
@@ -72,6 +87,13 @@ function App() {
   const [validationError, setValidationError] = useState(null);
   const [validating, setValidating] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [hasValidated, setHasValidated] = useState(false);
+  const [syncTable, setSyncTable] = useState(false);
+
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }),
+    []
+  );
 
   const fetchTransactions = async () => {
     try {
@@ -110,7 +132,6 @@ function App() {
   const handleValidate = async (event) => {
     event.preventDefault();
     setValidationError(null);
-    setValidationResult(null);
 
     const trimmedUserId = filters.userId.trim();
     if (!trimmedUserId) {
@@ -124,6 +145,7 @@ function App() {
       return;
     }
 
+    setHasValidated(true);
     setValidating(true);
     try {
       const payload = {
@@ -140,17 +162,13 @@ function App() {
         payload
       );
       setValidationResult(res.data);
-      setAppliedFilters({
-        userId: filters.userId,
-        amount: filters.amount,
-        location: filters.location,
-      });
     } catch (err) {
       const message =
         err.response?.data?.error ||
         err.message ||
         "Unable to validate transaction.";
       setValidationError(message);
+      setValidationResult((prev) => prev);
     } finally {
       setValidating(false);
     }
@@ -163,15 +181,36 @@ function App() {
     setValidationResult(null);
     setValidationError(null);
     setShowAdvanced(false);
+    setHasValidated(false);
+    setSyncTable(false);
   };
 
+  const handleSyncChange = (event) => {
+    const { checked } = event.target;
+    setSyncTable(checked);
+    if (!checked) {
+      setAppliedFilters({ userId: "", amount: "", location: "" });
+    }
+  };
+
+  const activeFilters = useMemo(() => {
+    if (syncTable) {
+      return {
+        userId: filters.userId,
+        amount: filters.amount,
+        location: filters.location,
+      };
+    }
+    return appliedFilters;
+  }, [syncTable, filters, appliedFilters]);
+
   const filteredTransactions = useMemo(() => {
-    if (!appliedFilters.userId && !appliedFilters.amount) {
+    if (!activeFilters.userId && !activeFilters.amount) {
       return transactions;
     }
 
-    const userIdQuery = appliedFilters.userId.trim().toLowerCase();
-    const amountThreshold = parseFloat(appliedFilters.amount);
+    const userIdQuery = activeFilters.userId.trim().toLowerCase();
+    const amountThreshold = parseFloat(activeFilters.amount);
 
     return transactions.filter((tx) => {
       const userId = (tx.user_id ?? tx.userId ?? "").toString().toLowerCase();
@@ -184,12 +223,49 @@ function App() {
 
       return matchesUser && matchesAmount;
     });
-  }, [transactions, appliedFilters]);
+  }, [transactions, activeFilters]);
 
   const total = stats.total ?? transactions.length;
   const fraudCount = stats.frauds ?? 0;
   const fraudPercent = total > 0 ? ((fraudCount / total) * 100).toFixed(1) : 0;
   const validCount = Math.max(total - fraudCount, 0);
+
+  const statCards = useMemo(() => {
+    const safeTotal = Number.isFinite(Number(total)) ? Number(total) : 0;
+    const safeFraud = Number.isFinite(Number(fraudCount)) ? Number(fraudCount) : 0;
+    const safeValid = Number.isFinite(Number(validCount)) ? Number(validCount) : 0;
+    const rateNumber = Number(fraudPercent);
+    const formattedRate = Number.isFinite(rateNumber)
+      ? `${rateNumber.toFixed(1)}%`
+      : "0%";
+
+    return [
+      {
+        label: "Total Transactions",
+        value: numberFormatter.format(Math.max(safeTotal, 0)),
+        tone: "blue",
+        badge: "TX",
+      },
+      {
+        label: "Detected Frauds",
+        value: numberFormatter.format(Math.max(safeFraud, 0)),
+        tone: "red",
+        badge: "FR",
+      },
+      {
+        label: "Valid Transactions",
+        value: numberFormatter.format(Math.max(safeValid, 0)),
+        tone: "green",
+        badge: "OK",
+      },
+      {
+        label: "Fraud Rate",
+        value: formattedRate,
+        tone: "amber",
+        badge: "%",
+      },
+    ];
+  }, [fraudCount, fraudPercent, numberFormatter, total, validCount]);
 
   const chartData = useMemo(() => {
     if (total === 0) {
@@ -240,37 +316,35 @@ function App() {
   const validationFlags = validationResult?.flag_details || [];
   const validationHistory = validationResult?.history || {};
   const validationEvaluated = validationResult?.evaluated || {};
+  const showValidationSkeleton = validating && !validationResult && !validationError;
 
   return (
     <div className="container">
       <div className="header">
-        <h1 className="title">💳 Fraud Detection Dashboard</h1>
-        <div className="status-bar">
-          <span className="live-dot"></span> LIVE
-          {refreshing && <span className="refresh">⟳</span>}
+        <div className="header-titles">
+          <h1 className="title">Fraud Detection Dashboard</h1>
+          <p className="subtitle">Real-time oversight for payments risk and anomaly monitoring.</p>
+        </div>
+        <div className="status-bar" role="status" aria-live="polite">
+          <span className="live-dot"></span>
+          <div className="status-copy">
+            <span className="status-label">Live</span>
+            <span className="status-hint">{refreshing ? "Refreshing data" : "Stream healthy"}</span>
+          </div>
+          {refreshing && <span className="refresh" aria-hidden="true">⟳</span>}
         </div>
       </div>
 
       <div className="dashboard-top">
         <div className="left-column">
-          {/* ===== Summary cards ===== */}
-          <div className="summary">
-            <div className="card total">
-              <h3>Total</h3>
-              <p>{total}</p>
-            </div>
-            <div className="card fraud">
-              <h3>Frauds</h3>
-              <p>{fraudCount}</p>
-            </div>
-            <div className="card percent">
-              <h3>Fraud %</h3>
-              <p>{fraudPercent}%</p>
-            </div>
+          <div className="stat-card-grid">
+            {statCards.map((card) => (
+              <StatCard key={card.label} {...card} />
+            ))}
           </div>
 
-          <div className="form-card">
-            <h3>Transaction Lookup</h3>
+          <div className="form-card panel">
+            <h3 className="section-title">Transaction Lookup</h3>
             <form onSubmit={handleValidate}>
               <div className="form-grid">
                 <div className="input-group">
@@ -306,14 +380,25 @@ function App() {
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                className="advanced-toggle"
-                onClick={() => setShowAdvanced((prev) => !prev)}
-              >
-                {showAdvanced ? "Hide advanced fields" : "Add location (optional)"}
-              </button>
-              <div className="actions">
+              <div className="form-controls-row">
+                <button
+                  type="button"
+                  className="advanced-toggle"
+                  onClick={() => setShowAdvanced((prev) => !prev)}
+                >
+                  {showAdvanced ? "Hide advanced fields" : "Add location (optional)"}
+                </button>
+                <label className="form-toggle">
+                  <input
+                    type="checkbox"
+                    checked={syncTable}
+                    onChange={handleSyncChange}
+                  />
+                  <span className="toggle-indicator" aria-hidden="true"></span>
+                  <span className="toggle-label">Sync table results</span>
+                </label>
+              </div>
+              <div className="actions button-row">
                 <button type="submit" className="primary-btn" disabled={validating}>
                   {validating ? "Checking..." : "Validate"}
                 </button>
@@ -322,52 +407,63 @@ function App() {
                 </button>
               </div>
             </form>
-            {validationError && (
-              <div className="validation-banner error">
-                <span>{validationError}</span>
-              </div>
-            )}
-            {validationResult && (
-              <div className={`validation-banner ${validationStatus}`}>
-                <div className="validation-header">
-                  <span className={`status-pill ${validationStatus}`}>
-                    {validationStatus === "fraud" ? "Fraud" : "Valid"}
-                  </span>
-                  <span className="validation-context">
-                    Amount {formatAmount(validationEvaluated.amount)}
-                    {validationHistory.average_amount != null
-                      ? ` · Avg ${formatAmount(validationHistory.average_amount)}`
-                      : ""}
-                  </span>
-                </div>
-                {validationHistory.recent_count ? (
-                  <div className="validation-meta">
-                    Last txn {formatTime(validationHistory.last_time)}
-                    {validationHistory.last_location
-                      ? ` · ${validationHistory.last_location}`
-                      : ""}
+            <div className={`validation-section${hasValidated ? " active" : ""}`}>
+              {showValidationSkeleton && (
+                <div className="validation-banner pending">
+                  <div className="validation-header">
+                    <span className="status-pill pending">Checking</span>
+                    <span className="validation-context">Running rule heuristics and anomaly score...</span>
                   </div>
-                ) : (
-                  <div className="validation-meta">No prior history for this user.</div>
-                )}
-                {validationFlags.length > 0 ? (
-                  <ul className="validation-flags">
-                    {validationFlags.map((flag) => (
-                      <li key={flag.code}>
-                        <strong>{flag.code}</strong>: {flag.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="validation-safe">No fraud rules fired for this scenario.</p>
-                )}
-              </div>
-            )}
+                  <p className="validation-safe">Hold tight — we’ll surface a verdict in a second.</p>
+                </div>
+              )}
+              {validationError && (
+                <div className="validation-banner error">
+                  <span>{validationError}</span>
+                </div>
+              )}
+              {validationResult && (
+                <div className={`validation-banner ${validationStatus}`}>
+                  <div className="validation-header">
+                    <span className={`status-pill ${validationStatus}`}>
+                      {validationStatus === "fraud" ? "Fraud" : "Valid"}
+                    </span>
+                    <span className="validation-context">
+                      Amount {formatAmount(validationEvaluated.amount)}
+                      {validationHistory.average_amount != null
+                        ? ` · Avg ${formatAmount(validationHistory.average_amount)}`
+                        : ""}
+                    </span>
+                  </div>
+                  {validationHistory.recent_count ? (
+                    <div className="validation-meta">
+                      Last txn {formatTime(validationHistory.last_time)}
+                      {validationHistory.last_location
+                        ? ` · ${validationHistory.last_location}`
+                        : ""}
+                    </div>
+                  ) : (
+                    <div className="validation-meta">No prior history for this user.</div>
+                  )}
+                  {validationFlags.length > 0 ? (
+                    <ul className="validation-flags">
+                      {validationFlags.map((flag) => (
+                        <li key={flag.code}>
+                          <strong>{flag.code}</strong>: {flag.message}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="validation-safe">No fraud rules fired for this scenario.</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="chart-card">
-          <h3>Transaction Distribution</h3>
+        <div className="chart-card panel">
+          <h3 className="section-title">Transaction Distribution</h3>
           <div className="chart-wrapper">
             {chartData ? (
               <Pie data={chartData} options={chartOptions} />
@@ -390,8 +486,9 @@ function App() {
       {loading ? (
         <p>Loading transactions ...</p>
       ) : (
-        <div className={`table-wrapper fade-in ${refreshing ? "dim" : ""}`}>
-          <table>
+        <div className={`table-wrapper panel ${refreshing ? "dim" : ""}`}>
+          <div className="table-scroll">
+            <table className="data-table">
             <thead>
               <tr>
                 <th>ID</th>
@@ -447,6 +544,7 @@ function App() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
