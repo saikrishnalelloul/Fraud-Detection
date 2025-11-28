@@ -1,15 +1,22 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path("transactions.db")  # adjust if your app uses a different path
+DEFAULT_PATH = Path(__file__).resolve().with_name("transactions.db")
+DB_PATH = Path(os.getenv("TRANSACTIONS_DB_PATH", DEFAULT_PATH))
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS transactions (
     transaction_id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    amount REAL NOT NULL,
-    timestamp TEXT NOT NULL,
-    is_fraud INTEGER NOT NULL,
+    user_id INTEGER,
+    amount REAL,
+    location TEXT,
+    device TEXT,
+    time TEXT,
+    timestamp TEXT,
+    prediction TEXT,
+    is_fraud INTEGER,
     risk_score REAL
 );
 """

@@ -42,8 +42,11 @@ services:
     environment:
       - KAFKA_BROKER=kafka:9092
       - DATABASE_URL=${DATABASE_URL}
+      - TRANSACTIONS_DB_PATH=/app/data/transactions.db
     restart: always
     command: bash -c "python init_db.py && exec python kafka_consumer_worker.py"
+    volumes:
+      - transactions_data:/app/data
 
   flask:
     build:
@@ -55,7 +58,13 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - KAFKA_BROKER=kafka:9092
+      - TRANSACTIONS_DB_PATH=/app/data/transactions.db
     ports:
       - "5000:5000"
     restart: unless-stopped
     command: ["python", "-u", "app.py"]
+    volumes:
+      - transactions_data:/app/data
+
+volumes:
+  transactions_data:

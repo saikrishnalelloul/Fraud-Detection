@@ -3,7 +3,6 @@ import json
 import pickle
 import numpy as np
 from kafka import KafkaConsumer
-from sqlalchemy import create_engine, text
 import pandas as pd
 from datetime import datetime, timezone
 import os
@@ -11,6 +10,7 @@ import os
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 
 import warnings
+from database import insert_transaction
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 # ---------- Load artifacts ----------
@@ -21,11 +21,6 @@ model = artifacts["model"]
 le_loc = artifacts["le_loc"]
 le_dev = artifacts["le_dev"]
 scaler = artifacts["scaler"]
-
-# ---------- DB config: update as needed ----------
-db_path = os.path.join(os.path.dirname(__file__), "transactions.db")
-DB_URL = f"sqlite:///{db_path}"
-engine = create_engine(DB_URL, echo=False)
 
 # Ensure table exists — see SQL below if you want to create manually
 # ---------- Kafka consumer ----------
@@ -98,18 +93,17 @@ for msg in consumer:
 
         tx_record = {
             "transaction_id": tx.get("transaction_id"),
-            "user_id": int(tx.get("user_id", 0)),
-            "amount": float(tx.get("amount", 0.0)),
+            "user_id": tx.get("user_id"),
+            "amount": tx.get("amount"),
+            "location": tx.get("location"),
+            "device": tx.get("device"),
+            "time": tx.get("time", datetime.now(timezone.utc).isoformat()),
             "timestamp": tx.get("time", datetime.now(timezone.utc).isoformat()),
             "is_fraud": is_fraud,
-            "risk_score": risk_score
+            "risk_score": risk_score,
         }
 
-        # insert into DB (adjust columns to your schema)
-        with engine.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO transactions (transaction_id, user_id, amount, timestamp, is_fraud, risk_score) VALUES (:transaction_id, :user_id, :amount, :timestamp, :is_fraud, :risk_score)"
-            ), tx_record)
+        insert_transaction(tx_record, "fraud" if is_fraud else "normal")
 
         print("Processed", tx_record["transaction_id"], "fraud?", is_fraud, "risk", risk_score)
     except Exception as e:
